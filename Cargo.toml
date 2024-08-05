@@ -1,0 +1,11 @@
+[package]
+name = "idalon_consumer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reqwest = { version = "0.12.5", features = ["json"] }
+serde = { version = "1.0.204", features = ["derive"] }
+serde_json = "1.0.120"
+tokio = { version = "1.39.1", features = ["full"] }
+tokio-stream = "0.1.15"
