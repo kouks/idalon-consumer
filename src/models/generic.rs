@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::error::IdalonError;
+use reqwest::Url;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio_stream::Stream;
 
@@ -16,7 +17,8 @@ pub struct Collection<T> {
 
 pub struct Paginator<T: Model> {
     filters: T::Filters,
-    future: Option<Pin<Box<dyn Future<Output = Collection<T>>>>>,
+    page: usize,
+    future: Option<Pin<Box<dyn Future<Output = Result<Collection<T>, IdalonError>>>>>,
 }
 
 pub trait Paginable {
@@ -27,7 +29,8 @@ pub trait Paginable {
 impl<T: Model> Paginator<T> {
     pub fn new(filters: T::Filters) -> Self {
         Paginator {
-            filters: filters,
+            filters,
+            page: 0,
             future: None,
         }
     }
@@ -35,71 +38,68 @@ impl<T: Model> Paginator<T> {
 
 impl<T: Model> Stream for Paginator<T>
 where
-    Paginator<T>: Unpin,
-    T::Filters: Unpin,
+    T::Filters: Unpin + 'static,
 {
     type Item = Collection<T>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut filters = self.filters.clone();
-
-        filters.set_page(self.filters.get_page() + 1);
-
         if let None = self.future {
-            let future = async {
-                // let filters = T::Filters::default();
+            let mut filters = self.filters.clone();
 
-                T::fetch_many(T::resource_url(), filters).await.unwrap()
-            };
+            filters.set_page(self.page);
 
-            self.future = Some(Box::pin(future))
+            self.page = self.page + 1;
+
+            self.future = Some(Box::pin(async { T::find_many(filters).await }))
         }
 
         let future = self.future.as_mut().unwrap();
 
         match future.as_mut().poll(cx) {
-            Poll::Ready(data) => match data.items.len() {
-                0 => Poll::Ready(None),
-                _ => Poll::Ready(Some(data)),
-            },
+            Poll::Ready(result) => {
+                self.future = None;
+
+                if result.is_err() {
+                    return Poll::Ready(None);
+                }
+
+                let data = result.unwrap();
+
+                match data.items.len() {
+                    0 => Poll::Ready(None),
+                    _ => Poll::Ready(Some(data)),
+                }
+            }
             Poll::Pending => Poll::Pending,
         }
     }
 }
 
+#[allow(async_fn_in_trait)]
 pub trait Model: DeserializeOwned {
-    type Filters: Paginable + Serialize + Default + Clone;
+    type Filters: Paginable + Serialize + Clone;
 
-    // Get the resource URL;
-    fn resource_url() -> String;
+    fn resource_url() -> Url;
 
-    // List all resources of type T with the provided filters.
-    #[allow(async_fn_in_trait)]
-    async fn find_many(filters: Self::Filters) -> Collection<Self>;
+    async fn find_many(filters: Self::Filters) -> Result<Collection<Self>, IdalonError> {
+        Self::fetch_many(Self::resource_url(), filters).await
+    }
 
-    // Fetch a detail of a resource with the specified UUID.
-    #[allow(async_fn_in_trait)]
-    async fn find_one(uuid: &str) -> Self;
+    async fn find_one(uuid: &str) -> Result<Self, IdalonError> {
+        let url = Url::parse(&format!("{}/{}", Self::resource_url().as_str(), uuid)).unwrap();
 
-    // List all available resources
-    #[allow(async_fn_in_trait)]
-    async fn all() -> Collection<Self> {
-        Self::find_many(Self::Filters::default()).await
+        Self::fetch_one(url).await
     }
 
     fn paginate(filters: Self::Filters) -> Paginator<Self> {
         Paginator::new(filters)
     }
 
-    #[allow(async_fn_in_trait)]
-    async fn fetch_many(
-        url: String,
-        filters: Self::Filters,
-    ) -> Result<Collection<Self>, IdalonError> {
+    async fn fetch_many(url: Url, filters: Self::Filters) -> Result<Collection<Self>, IdalonError> {
         let client = reqwest::Client::new();
 
         let response = client
-            .get(&url)
+            .get(url.as_str())
             .query(&filters)
             .send()
             .await
@@ -116,11 +116,14 @@ pub trait Model: DeserializeOwned {
         }
     }
 
-    #[allow(async_fn_in_trait)]
-    async fn fetch_one(url: String) -> Result<Self, IdalonError> {
+    async fn fetch_one(url: Url) -> Result<Self, IdalonError> {
         let client = reqwest::Client::new();
 
-        let response = client.get(&url).send().await.map_err(crate::error::fetch)?;
+        let response = client
+            .get(url.as_str())
+            .send()
+            .await
+            .map_err(crate::error::fetch)?;
 
         match response.status().as_u16() {
             x if x < 400 => Ok(response.json::<Self>().await.map_err(crate::error::parse)?),

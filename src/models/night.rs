@@ -1,4 +1,5 @@
 use crate::models::generic::*;
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug, Clone)]
@@ -13,8 +14,8 @@ pub struct Night {
 pub struct NightFilters {
     pub offset: usize,
     pub limit: usize,
-    pub verified_only: bool,
-    pub season: usize,
+    pub verified_only: Option<bool>,
+    pub season: Option<usize>,
     pub order_by: String,
     pub order_direction: String,
 }
@@ -24,8 +25,21 @@ impl Default for NightFilters {
         NightFilters {
             offset: 0,
             limit: 10,
-            verified_only: true,
-            season: 3,
+            verified_only: None,
+            season: None,
+            order_by: String::from("createdAt"),
+            order_direction: String::from("desc"),
+        }
+    }
+}
+
+impl NightFilters {
+    pub fn leaderboard() -> Self {
+        Self {
+            offset: 0,
+            limit: 25,
+            season: Some(3),
+            verified_only: Some(true),
             order_by: String::from("averageRealTime"),
             order_direction: String::from("asc"),
         }
@@ -45,19 +59,7 @@ impl Paginable for NightFilters {
 impl Model for Night {
     type Filters = NightFilters;
 
-    fn resource_url() -> String {
-        String::from("https://api.idalon.com/v2/nights")
-    }
-
-    async fn find_one(uuid: &str) -> Self {
-        Self::fetch_one(format!("{}/{}", Self::resource_url(), uuid))
-            .await
-            .unwrap()
-    }
-
-    async fn find_many(filters: NightFilters) -> Collection<Self> {
-        Self::fetch_many(Self::resource_url(), filters)
-            .await
-            .unwrap()
+    fn resource_url() -> Url {
+        Url::parse("https://api.idalon.com/v2/nights").unwrap()
     }
 }

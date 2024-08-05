@@ -9,24 +9,27 @@ pub mod models;
 
 #[tokio::main]
 pub async fn main() -> Result<(), crate::error::IdalonError> {
-    //
-
-    let paginator = Night::paginate(NightFilters::default());
-
-    tokio::pin!(paginator);
+    let mut paginator = Night::paginate(NightFilters::leaderboard());
 
     while let Some(page) = paginator.next().await {
         println!("fetch");
 
-        for night in page.items {
-            println!("{:?}", night)
-        }
-    }
+        tokio::spawn(async move {
+            // for night in page.items {
+            //     println!("{:?}", night)
+            // }
 
-    // Night::paginate()
+            println!("Median is {:.3}", find_median(&page.items));
+            println!("Average is {:.3}", find_average(&page.items));
+        });
+    }
 
     // println!("Median is {:.3}", find_median(&data.items));
     // println!("Average is {:.3}", find_average(&data.items));
+
+    // let night = Night::find_one("d4bad0ba-5b5a-412b-a75a-e92e24c4f908").await;
+
+    // println!("Night: {:?}", night);
 
     Ok(())
 }
