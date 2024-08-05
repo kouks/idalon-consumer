@@ -54,6 +54,10 @@ impl Paginable for NightFilters {
     fn get_page(&self) -> usize {
         self.offset / self.limit
     }
+
+    fn get_page_size(&self) -> usize {
+        self.limit
+    }
 }
 
 impl Model for Night {

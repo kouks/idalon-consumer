@@ -1,3 +1,4 @@
+use error::IdalonError;
 use models::{
     generic::Model,
     night::{Night, NightFilters},
@@ -11,8 +12,12 @@ pub mod models;
 pub async fn main() -> Result<(), crate::error::IdalonError> {
     let mut paginator = Night::paginate(NightFilters::leaderboard());
 
-    while let Some(page) = paginator.next().await {
-        println!("fetch");
+    while let Some(result) = paginator.next().await {
+        if result.is_err() {
+            return Err(IdalonError::new("Failed to fetch page."));
+        }
+
+        let page = result.expect("Result is not None as checked before.");
 
         tokio::spawn(async move {
             // for night in page.items {
@@ -27,9 +32,9 @@ pub async fn main() -> Result<(), crate::error::IdalonError> {
     // println!("Median is {:.3}", find_median(&data.items));
     // println!("Average is {:.3}", find_average(&data.items));
 
-    // let night = Night::find_one("d4bad0ba-5b5a-412b-a75a-e92e24c4f908").await;
+    let night = Night::find_one("d4bad0ba-5b5a-412b-a75a-e92e24c4f908").await;
 
-    // println!("Night: {:?}", night);
+    println!("Night: {:?}", night);
 
     Ok(())
 }

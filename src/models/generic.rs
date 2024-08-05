@@ -17,21 +17,22 @@ pub struct Collection<T> {
 
 pub struct Paginator<T: Model> {
     filters: T::Filters,
-    page: usize,
     future: Option<Pin<Box<dyn Future<Output = Result<Collection<T>, IdalonError>>>>>,
+    was_last: bool,
 }
 
 pub trait Paginable {
     fn set_page(&mut self, page: usize);
     fn get_page(&self) -> usize;
+    fn get_page_size(&self) -> usize;
 }
 
 impl<T: Model> Paginator<T> {
     pub fn new(filters: T::Filters) -> Self {
         Paginator {
             filters,
-            page: 0,
             future: None,
+            was_last: false,
         }
     }
 }
@@ -40,20 +41,27 @@ impl<T: Model> Stream for Paginator<T>
 where
     T::Filters: Unpin + 'static,
 {
-    type Item = Collection<T>;
+    type Item = Result<Collection<T>, IdalonError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if let None = self.future {
-            let mut filters = self.filters.clone();
+        if self.was_last {
+            return Poll::Ready(None);
+        }
 
-            filters.set_page(self.page);
+        if self.future.is_none() {
+            let filters = self.filters.clone();
 
-            self.page = self.page + 1;
+            let next_page = self.filters.get_page() + 1;
+
+            self.filters.set_page(next_page);
 
             self.future = Some(Box::pin(async { T::find_many(filters).await }))
         }
 
-        let future = self.future.as_mut().unwrap();
+        let future = self
+            .future
+            .as_mut()
+            .expect("Option is not None as checked before.");
 
         match future.as_mut().poll(cx) {
             Poll::Ready(result) => {
@@ -63,11 +71,18 @@ where
                     return Poll::Ready(None);
                 }
 
-                let data = result.unwrap();
+                let data = result
+                    .as_ref()
+                    .expect("Result is not Err as checked before.");
+                let polled = (self.filters.get_page() - 1) * self.filters.get_page_size();
+
+                if data.total <= polled {
+                    self.was_last = true
+                }
 
                 match data.items.len() {
                     0 => Poll::Ready(None),
-                    _ => Poll::Ready(Some(data)),
+                    _ => Poll::Ready(Some(result)),
                 }
             }
             Poll::Pending => Poll::Pending,
