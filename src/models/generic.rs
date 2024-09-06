@@ -148,3 +148,27 @@ pub trait Model: DeserializeOwned {
         }
     }
 }
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all(deserialize = "camelCase"))]
+pub struct SquadMember {
+    pub uuid: Option<String>,
+    pub ign: Option<String>,
+    pub role: Option<String>,
+    pub scope: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all(deserialize = "camelCase"))]
+pub struct Eidolon {
+    pub result: String,
+    pub spawn_delay: Option<f32>,
+    pub spawn_animation_time: Option<f32>,
+    pub first_limb_break_time: Option<f32>,
+    pub last_limb_break_time: Option<f32>,
+    pub median_limb_break_time: Option<f32>,
+    pub limb_break_times: Vec<f32>,
+    pub shrine_time: Option<f32>,
+    pub shard_insertion_times: Vec<f32>,
+    pub capshot_time: Option<f32>,
+}
