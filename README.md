@@ -29,19 +29,12 @@ Fetching a paginated listing:
 let mut paginator = Night::paginate(NightFilters::leaderboard());
 
 while let Some(result) = paginator.next().await {
-    if result.is_err() {
-        return Err(IdalonError::new("Failed to fetch page."));
-    }
-
-    let page = result.expect("Result is not None as checked before.");
+    let page = result.expect("Failed to fetch page.");
 
     tokio::spawn(async move {
-        for run in page.items {
-            println!("{:?}", run)
+        for night in page.items {
+            // Process a night.
         }
-
-        // println!("Median is {:.3}", find_median(&page.items));
-        // println!("Average is {:.3}", find_average(&page.items));
     });
 }
 ```
